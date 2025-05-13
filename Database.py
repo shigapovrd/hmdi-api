@@ -21,3 +21,13 @@ class Database:
                 """,
                 ticket_id, description
             )
+
+    async def get_all_requests(self):
+        async with self.pool.acquire() as connection:
+            rows = await connection.fetch("SELECT description FROM requests")
+            return [
+                {
+                    "description": row['description']
+                }
+                for row in rows
+            ]

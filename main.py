@@ -31,10 +31,8 @@ async def request_help(request: Request):
     description = data.get('description', 'Нет описания')
     print(f"Заявка от: {description}")
 
-    # Добавляем заявку в базу данных
     await db.add_request(description, ticket_id)
 
-    # Заглушка для AI-ответа
     suggested_reply = "Спасибо! Мы ищем помощника для вашей проблемы..."
 
     return {
@@ -52,3 +50,9 @@ async def chat(websocket: WebSocket):
             await websocket.send_text(f"Ответ: {data}")
     except WebSocketDisconnect:
         print("WebSocket disconnected")
+
+@app.get("/get-help-requests")
+async def get_help_requests():
+    requests_list = await db.get_all_requests()
+    return {"requests": requests_list}        
+
