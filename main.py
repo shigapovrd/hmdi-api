@@ -16,6 +16,9 @@ DB_CONFIG = {
 
 db = Database(DB_CONFIG)
 
+# Хранилище активных видео-комнат
+active_video_rooms = {}
+
 @app.on_event("startup")
 async def startup():
     await db.connect()
@@ -27,17 +30,11 @@ async def shutdown():
 @app.post("/request-help")
 async def request_help(request: Request):
     data = await request.json()
-    user_id = data.get('user_id')
-    
-    # Если user_id не предоставлен, генерируем новый
-    if not user_id:
-        user_id = f"user_{uuid4().hex[:8]}"
-    
     ticket_id = f"req_{uuid4().hex[:6]}"
     description = data.get('description', 'Нет описания')
+    user_id = f"user_{uuid4().hex[:8]}"
     print(f"Заявка от пользователя {user_id}: {description}")
 
-    # Передаем user_id в базу данных
     await db.add_request(description, ticket_id, user_id)
 
     suggested_reply = "Спасибо! Мы ищем помощника для вашей проблемы..."
@@ -45,9 +42,64 @@ async def request_help(request: Request):
     return {
         "status": "waiting",
         "ticket_id": ticket_id,
-        "user_id": user_id,  # Возвращаем user_id клиенту
+        "user_id": user_id,
         "message": suggested_reply
     }
+
+@app.post("/create-video-room")
+async def create_video_room(request: Request):
+    data = await request.json()
+    ticket_id = data.get('ticket_id')
+    helper_id = data.get('helper_id')  # ID помощника
+
+    # Получаем информацию о заявке из базы
+    request_info = await db.get_request_by_ticket(ticket_id)
+    if not request_info:
+        return {"error": "Заявка не найдена"}
+
+    # Создаем уникальный идентификатор комнаты
+    room_id = f"room_{uuid4().hex[:8]}"
+    
+    # Сохраняем информацию о комнате
+    active_video_rooms[room_id] = {
+        "ticket_id": ticket_id,
+        "requester_id": request_info["user_id"],
+        "helper_id": helper_id,
+        "created_at": request_info["created_at"]
+    }
+
+    return {
+        "room_id": room_id,
+        "domain": "meet.jit.si",  # Домен Jitsi Meet
+        "requester_id": request_info["user_id"]
+    }
+
+@app.post("/end-video-room")
+async def end_video_room(request: Request):
+    data = await request.json()
+    room_id = data.get('room_id')
+    user_id = data.get('user_id')
+
+    if room_id in active_video_rooms:
+        room = active_video_rooms[room_id]
+        # Проверяем, что запрос на завершение пришел от участника комнаты
+        if user_id in [room["requester_id"], room["helper_id"]]:
+            del active_video_rooms[room_id]
+            return {"status": "success", "message": "Комната закрыта"}
+    
+    return {"status": "error", "message": "Комната не найдена или нет прав"}
+
+@app.get("/check-video-room/{room_id}")
+async def check_video_room(room_id: str, user_id: str):
+    if room_id in active_video_rooms:
+        room = active_video_rooms[room_id]
+        # Проверяем, что пользователь является участником комнаты
+        if user_id in [room["requester_id"], room["helper_id"]]:
+            return {
+                "status": "active",
+                "room_info": room
+            }
+    return {"status": "not_found"}
 
 @app.websocket("/ws/chat")
 async def chat(websocket: WebSocket):

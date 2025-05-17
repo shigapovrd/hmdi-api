@@ -33,6 +33,23 @@ class Database:
                 ticket_id, user_id, description
             )
 
+    async def get_request_by_ticket(self, ticket_id: str):
+        async with self.pool.acquire() as connection:
+            row = await connection.fetchrow("""
+                SELECT ticket_id, user_id, description, created_at
+                FROM requests
+                WHERE ticket_id = $1
+            """, ticket_id)
+            
+            if row:
+                return {
+                    "ticket_id": row['ticket_id'],
+                    "user_id": row['user_id'],
+                    "description": row['description'],
+                    "created_at": row['created_at'].isoformat()
+                }
+            return None
+
     async def get_all_requests(self):
         async with self.pool.acquire() as connection:
             rows = await connection.fetch("""
