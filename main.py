@@ -32,7 +32,11 @@ async def request_help(request: Request):
     data = await request.json()
     ticket_id = f"req_{uuid4().hex[:6]}"
     description = data.get('description', 'Нет описания')
-    user_id = f"user_{uuid4().hex[:8]}"
+    user_id = data.get('user_id')
+    
+    if not user_id:
+        return {"error": "user_id is required"}
+        
     print(f"Заявка от пользователя {user_id}: {description}")
 
     await db.add_request(description, ticket_id, user_id)
@@ -42,7 +46,6 @@ async def request_help(request: Request):
     return {
         "status": "waiting",
         "ticket_id": ticket_id,
-        "user_id": user_id,
         "message": suggested_reply
     }
 
@@ -50,12 +53,19 @@ async def request_help(request: Request):
 async def create_video_room(request: Request):
     data = await request.json()
     ticket_id = data.get('ticket_id')
-    helper_id = data.get('helper_id')  # ID помощника
+    helper_id = data.get('helper_id')
 
     # Получаем информацию о заявке из базы
     request_info = await db.get_request_by_ticket(ticket_id)
     if not request_info:
         return {"error": "Заявка не найдена"}
+
+    # Проверяем, что helper не является автором заявки
+    if helper_id == request_info["user_id"]:
+        return {
+            "error": "Вы не можете помогать с собственной заявкой",
+            "status": "self_help_forbidden"
+        }
 
     # Создаем уникальный идентификатор комнаты
     room_id = f"room_{uuid4().hex[:8]}"
@@ -70,7 +80,7 @@ async def create_video_room(request: Request):
 
     return {
         "room_id": room_id,
-        "domain": "meet.jit.si",  # Домен Jitsi Meet
+        "domain": "meet.jit.si",
         "requester_id": request_info["user_id"]
     }
 
