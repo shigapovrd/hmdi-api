@@ -27,17 +27,25 @@ async def shutdown():
 @app.post("/request-help")
 async def request_help(request: Request):
     data = await request.json()
+    user_id = data.get('user_id')
+    
+    # Если user_id не предоставлен, генерируем новый
+    if not user_id:
+        user_id = f"user_{uuid4().hex[:8]}"
+    
     ticket_id = f"req_{uuid4().hex[:6]}"
     description = data.get('description', 'Нет описания')
-    print(f"Заявка от: {description}")
+    print(f"Заявка от пользователя {user_id}: {description}")
 
-    await db.add_request(description, ticket_id)
+    # Передаем user_id в базу данных
+    await db.add_request(description, ticket_id, user_id)
 
     suggested_reply = "Спасибо! Мы ищем помощника для вашей проблемы..."
 
     return {
         "status": "waiting",
         "ticket_id": ticket_id,
+        "user_id": user_id,  # Возвращаем user_id клиенту
         "message": suggested_reply
     }
 
